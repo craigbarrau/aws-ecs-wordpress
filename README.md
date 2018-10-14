@@ -1,4 +1,4 @@
-# AWS ECS Secrets Example
+# AWS ECS+RDS+S3 Wordpress Example
 
 The below example is inspired by [this blog post](https://aws.amazon.com/blogs/security/how-to-manage-secrets-for-amazon-ec2-container-service-based-applications-by-using-amazon-s3-and-docker/).
 
