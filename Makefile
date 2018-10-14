@@ -28,13 +28,16 @@ create-stack: create-cf
 run-wordpress:
 	@./scripts/create_ecs.sh $(AWS_STACK_NAME)
 
-destroy: delete-ecs destroy-image destroy-stack
+destroy: delete-ecs destroy-image delete-bucket destroy-stack
 
 destroy-ecs:
 	@./scripts/delete_ecs.sh $(AWS_STACK_NAME)
 
 destroy-image:
 	@./scripts/delete_images.sh
+
+delete-bucket:
+	@./scripts/delete_bucket.sh $(AWS_STACK_NAME)
 
 destroy-stack:
 	@./scripts/delete_stack.sh $(AWS_STACK_NAME)
