@@ -8,7 +8,7 @@ Through the power of CloudFormation you can easily create an AWS stack with:
 - ECR for storing the wordpress docker image
 - VPC for isolation
 - Encrypted S3 bucket containing the MySQL credential for connectivity from the Docker container
-- ~~Access to the S3 bucket restricted to the ECS cluster VPC~~
+- ~~Access to the S3 bucket restricted to the ECS cluster VPC~~ See [Known Issues](https://github.com/craigbarrau/aws-ecs-wordpress#known-issues)
 
 After the stack is created, you can customise the official
 wordpress docker image to get the secret from the S3 bucket.
