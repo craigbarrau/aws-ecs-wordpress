@@ -93,8 +93,17 @@ See [this blog post](https://aws.amazon.com/blogs/security/how-to-manage-secrets
 # Destroying the stack
 
 Ok, so you got it working? Cool!
-But now, you want to save on AWS costs? Easy!
-Simply run `make destroy`
+But now, you want to save on AWS costs? No problem.
+
+There are a few resources that were created outside the CloudFormation stack. Delete them first.
+
+1. Delete the ECS service with `make delete-ecs`
+2. Destroy the wordpress image with `make delete-image`.  This only deletes the latest image. If you have others you will need to delete manually.
+3. Delete the bucket `make delete-bucket`. This won't work if you have bucket versioning enabled.
+4. Manually remove the VPC in AWS console. If you are not sure of it's identifier run `cat state/vpc-endpoint.json | jq -r .VpcEndpoint.VpcId` to print it to standard out.
+
+After the above prerequisites are removed simple run
+`make destroy` to remove the CloudFormation stack.
 
 # Known issues
 
