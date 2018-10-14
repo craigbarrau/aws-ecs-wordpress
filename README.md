@@ -90,6 +90,11 @@ docker push ${AWS_ECR_NAME}/secure-wordpress
 
 See [this blog post](https://aws.amazon.com/blogs/security/how-to-manage-secrets-for-amazon-ec2-container-service-based-applications-by-using-amazon-s3-and-docker/).
 
+# Destroying the stack
+
+Ok, so you got it working? Cool!
+But now, you want to save on AWS costs? Easy!
+Simply run `make destroy`
 
 # Known issues
 
