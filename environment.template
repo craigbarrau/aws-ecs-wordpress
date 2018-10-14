@@ -1,0 +1,14 @@
+#########################################################
+# Inputs to cloud formation
+#########################################################
+AWS_RDS_PASSWORD=SetToWhateverYouWant
+AWS_STACK_NAME=wordpress01
+AWS_SOURCE_CIDR=0.0.0.0/0
+AWS_INSTANCE_TYPE=t2.micro
+# Note: Must be created manually before execution
+AWS_KEY_NAME=wordpress
+
+#########################################################
+# Inputs for docker build/push
+#########################################################
+AWS_ECR_NAME=YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com

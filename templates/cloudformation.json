@@ -1,0 +1,477 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+
+  "Description": "CloudFormation template for the Managing Secrets for ECS apps with S3 blog. Creates a VPC, ECS Cluster, RDS instance and ECS instance",
+
+  "Mappings": {
+
+    "AWSRegionToAMI": {
+      "us-east-1": {
+        "AMI": "ami-a1fa1acc"
+      }
+    }
+
+  },
+
+  "Parameters": {
+
+    "DbPassword": {
+      "Type": "String",
+      "NoEcho": "true",
+      "MinLength" : "6",
+      "MaxLength" : "20",
+      "AllowedPattern" : "[a-zA-Z0-9]*",
+      "ConstraintDescription": "must match pattern [a-zA-Z0-9] and be from 6 to 20 chars in length."
+    },
+
+    "InstanceType": {
+      "Type": "String",
+      "Description": "ECS instance type",
+      "Default": "t2.micro",
+      "AllowedValues": ["t2.micro", "t2.small", "t2.medium", "t2.large"],
+      "ConstraintDescription": "must be a valid T2 EC2 instance type."
+    },
+
+    "KeyName": {
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "Description": "Name of an existing EC2 KeyPair to enable SSH access to the EC2 instances"
+    },
+
+    "SourceCidr": {
+      "Type": "String",
+      "Description": "Optional - CIDR/IP range for ECS instance outside access - defaults to 0.0.0.0/0",
+      "Default": "0.0.0.0/0"
+    }
+  },
+
+  "Resources": {
+
+    "SecretsBlogCluster": {
+      "Type": "AWS::ECS::Cluster"
+    },
+
+    "WordPressRepository": {
+      "Type": "AWS::ECR::Repository",
+      "Properties": {
+        "RepositoryName" : "secure-wordpress"
+      }
+    },
+
+    "VPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.5.0.0/16",
+        "EnableDnsSupport": "true",
+        "EnableDnsHostnames": "true",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "SecretsStoreBlog"
+          }
+        ]
+      }
+    },
+
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "DependsOn": "VPC"
+    },
+
+    "AttachGateway": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "DependsOn": [
+        "VPC",
+        "InternetGateway"
+      ],
+      "Properties": {
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "InternetGatewayId": {
+          "Ref": "InternetGateway"
+        }
+      }
+    },
+
+    "PublicSubnet1": {
+      "Type": "AWS::EC2::Subnet",
+      "DependsOn": "AttachGateway",
+      "Properties": {
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "CidrBlock": "10.5.0.0/24",
+        "AvailabilityZone": {
+          "Fn::Select": [ "0", { "Fn::GetAZs": "" } ]
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PublicSubnet1"
+          }
+        ]
+      }
+    },
+
+    "PublicSubnet2": {
+      "Type": "AWS::EC2::Subnet",
+      "DependsOn": "AttachGateway",
+      "Properties": {
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "CidrBlock": "10.5.1.0/24",
+        "AvailabilityZone": {
+          "Fn::Select": [ "1", { "Fn::GetAZs": "" } ]
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PublicSubnet2"
+          }
+        ]
+      }
+    },
+
+    "PublicRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "DependsOn": [
+        "VPC",
+        "AttachGateway"
+      ],
+      "Properties": {
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Public"
+          }
+        ]
+      }
+    },
+
+    "PublicRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": [
+        "PublicRouteTable",
+        "AttachGateway"
+      ],
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "InternetGateway"
+        }
+      }
+    },
+
+    "PublicSubnet1RouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "DependsOn": [
+        "PublicRouteTable",
+        "PublicSubnet1",
+        "AttachGateway"
+      ],
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PublicSubnet1"
+        },
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        }
+      }
+    },
+
+    "PublicSubnet2RouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "DependsOn": [
+        "PublicRouteTable",
+        "PublicSubnet2",
+        "AttachGateway"
+      ],
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PublicSubnet2"
+        },
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        }
+      }
+    },
+
+    "S3Endpoint" : {
+      "Type" : "AWS::EC2::VPCEndpoint",
+      "Properties" : {
+        "PolicyDocument" : {
+          "Version":"2012-10-17",
+          "Statement":[{
+            "Effect":"Allow",
+            "Principal": "*",
+            "Action": "*",
+            "Resource": "*"
+          }]
+        },
+        "RouteTableIds" : [ {"Ref" : "PublicRouteTable"} ],
+        "ServiceName" : { "Fn::Join": [ "", [ "com.amazonaws.", { "Ref": "AWS::Region" }, ".s3" ] ] },
+        "VpcId" : {"Ref" : "VPC"}
+      }
+    },
+
+    "SecretsStoreBucket" : {
+      "Type" : "AWS::S3::Bucket",
+      "Properties": {
+        "VersioningConfiguration": {
+          "Status" : "Enabled"
+        }
+      }
+    },
+
+    "WordPressLogGroup": {
+      "Type" : "AWS::Logs::LogGroup",
+      "Properties" : {
+        "RetentionInDays" : 7
+      }
+    },
+
+    "WordPressTaskDefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties" : {
+        "ContainerDefinitions" : [
+        {
+          "Name": "secure-wordpress",
+          "Image": { "Fn::Join": [ "", [ { "Ref" : "AWS::AccountId" }, ".dkr.ecr.", {"Ref": "AWS::Region"}, ".amazonaws.com/secure-wordpress"]]  },
+          "Memory":"500",
+          "Essential": "true",
+          "PortMappings":[
+            {
+              "ContainerPort": "80",
+              "HostPort": "80"
+            }
+          ],
+          "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                  "awslogs-group": { "Ref": "WordPressLogGroup" },
+                  "awslogs-region": { "Ref": "AWS::Region" }
+              }
+          },
+          "Environment": [
+            {
+              "Name": "SECRETS_BUCKET_NAME",
+              "Value": { "Ref": "SecretsStoreBucket" }
+            },
+            {
+              "Name": "WORDPRESS_DB_HOST",
+              "Value": { "Fn::GetAtt": [ "WordPressDB", "Endpoint.Address"] }
+            }
+          ]
+        }]
+      }
+    },
+
+    "EcsSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Security Group for ECS Instances",
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "SecurityGroupIngress": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": "22",
+          "ToPort": "22",
+          "CidrIp": {
+            "Ref": "SourceCidr"
+          }
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": "80",
+          "ToPort": "80",
+          "CidrIp": "0.0.0.0/0"
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": "443",
+          "ToPort": "443",
+          "CidrIp": "0.0.0.0/0"
+        }
+      ]}
+    },
+
+    "EcsInstance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "KeyName": {"Ref": "KeyName"},
+        "ImageId": {"Fn::FindInMap": ["AWSRegionToAMI", {"Ref": "AWS::Region"}, "AMI"] },
+        "InstanceType": {"Ref": "InstanceType"},
+        "NetworkInterfaces": [{
+          "GroupSet": [
+            { "Ref": "EcsSecurityGroup" }
+          ],
+          "AssociatePublicIpAddress": "true",
+          "DeviceIndex": "0",
+          "DeleteOnTermination": "true",
+          "SubnetId": {
+            "Ref": "PublicSubnet1"
+          }
+        }],
+        "BlockDeviceMappings" : [
+           {
+              "DeviceName" : "/dev/xvda",
+              "Ebs" : {
+                "VolumeSize" : "10",
+                "VolumeType":"gp2"
+              }
+           }
+        ],
+        "IamInstanceProfile": {"Ref": "EcsInstanceProfile"},
+        "Tags": [{"Key": "Name", "Value": "ECS Instance"} ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash\n",
+                "echo ECS_CLUSTER=", { "Ref": "SecretsBlogCluster" }, " >> /etc/ecs/ecs.config\n"
+              ]
+            ]
+          }
+        }
+      }
+    },
+
+    "EcsServerRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {
+              "Service": [
+                "ec2.amazonaws.com"
+              ]
+            },
+            "Action": [
+              "sts:AssumeRole"
+            ]
+          }]
+        },
+        "ManagedPolicyArns": [ "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role" ],
+        "Path": "/",
+        "Policies": [{
+          "PolicyName": "root",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [ "s3:PutObject", "s3:GetObject", "s3:DeleteObject" ],
+                "Resource": [
+                  { "Fn::Join" : [ "", ["arn:aws:s3:::", { "Ref": "SecretsStoreBucket" }, "/*"]]}
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [ "s3:ListBucket" ],
+                "Resource": [
+                  { "Fn::Join" : [ "", ["arn:aws:s3:::", { "Ref": "SecretsStoreBucket" }]]}
+                ]
+              }
+            ]
+        }}]
+      }
+    },
+
+    "EcsInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [{
+          "Ref": "EcsServerRole"
+        }]
+      }
+    },
+
+    "DBSubnetGroup" : {
+       "Type" : "AWS::RDS::DBSubnetGroup",
+       "Properties" : {
+          "DBSubnetGroupDescription" : "DBSubnetGroup",
+          "SubnetIds" : [ { "Ref": "PublicSubnet1" }, { "Ref": "PublicSubnet2" } ]
+       }
+    },
+
+    "DBSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "VpcId" : { "Ref": "VPC" },
+        "GroupDescription": "Open database for access",
+        "SecurityGroupIngress" : [{
+          "IpProtocol" : "tcp",
+          "FromPort" : "3306",
+          "ToPort" : "3306",
+          "SourceSecurityGroupId" : { "Ref" : "EcsSecurityGroup" }
+        }]
+      }
+    },
+
+    "WordPressDB" : {
+      "Type" : "AWS::RDS::DBInstance",
+      "Properties" : {
+         "AllocatedStorage" : "5",
+         "StorageType": "gp2",
+         "DBInstanceClass" : "db.t2.micro",
+         "Engine" : "MySQL",
+         "MasterUsername" : "root",
+         "MasterUserPassword" : { "Ref": "DbPassword" },
+         "VPCSecurityGroups" : [ { "Fn::GetAtt": [ "DBSecurityGroup", "GroupId" ] } ],
+         "PubliclyAccessible" : "false",
+         "DBSubnetGroupName": { "Ref": "DBSubnetGroup" }
+      }
+    }
+  },
+
+  "Outputs": {
+
+    "EcsCluster": {
+      "Description": "Name of the ECS Cluster",
+      "Value": {
+        "Ref": "SecretsBlogCluster"
+      }
+    },
+
+    "VPC": {
+      "Description": "The ID of the VPC created",
+      "Value": {
+        "Ref": "VPC"
+      }
+    },
+
+    "SecretsStoreBucket": {
+      "Description": "The S3 bucket name where the secrets are stored",
+      "Value": {
+        "Ref": "SecretsStoreBucket"
+      }
+    },
+
+    "WordPressURL": {
+      "Description": "The WordPress application URL",
+      "Value": {
+         "Fn::Join": [ "", ["http://", { "Fn::GetAtt": ["EcsInstance", "PublicDnsName"] }]]
+      }
+    },
+
+    "WordPressTaskDefinition": {
+      "Description": "The WordPress ECS Task Definition ARN",
+      "Value": {
+         "Ref": "WordPressTaskDefinition"
+      }
+    }
+  }
+}
